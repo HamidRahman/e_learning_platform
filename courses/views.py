@@ -1,4 +1,5 @@
 from django.apps import apps
+from django.core.cache import cache
 from django.contrib.auth.mixins import (LoginRequiredMixin, PermissionRequiredMixin)
 from django.urls import reverse_lazy
 from django.shortcuts import get_object_or_404, redirect
@@ -168,16 +169,36 @@ class CourseListView(TemplateResponseMixin, View):
     template_name = 'courses/course/list.html'
     
     def get(self, request, subject=None):
-        subjects = Subject.objects.annotate(
-            total_modules=Count('courses')
+        # subjects = Subject.objects.annotate(
+        #     total_modules=Count('courses')
+        #     )
+        subjects = cache.get('all_subjects')
+        if not subjects: # if subject = None then agian cache all subjects
+            subjects = Subject.objects.annotate(
+                total_courses=Count('courses')
             )
-        courses = Course.objects.annotate(
-            total_modules=Count('modules')
-        )
+            cache.set('all_subjects', subjects)
+            all_courses = Course.objects.annotate(
+              total_modules=Count('modules')
+            )
         
         if subject:
             subject = get_object_or_404(Subject, slug=subject)
-            courses = courses.filter(subject=subject)
+            #courses = courses.filter(subject=subject)
+            key = f'subject_{subject.id}_courses'
+            courses = cache.get(key)
+            if not courses:
+                courses = all_courses.filter(subject=subject)
+                cache.set(key, courses)
+        else:
+            courses = cache.get('all_courses')
+            if not courses:
+                courses = all_courses
+                cache.set('all_courses', courses)
+
+        # courses = Course.objects.annotate(
+        #     total_modules=Count('modules')
+        # )
         
         return self.render_to_response({
             'subjects': subjects,
